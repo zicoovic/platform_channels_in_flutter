@@ -1,122 +1,216 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'dart:async';
 
+/// Entry point of the application
+/// This function runs first and starts the app
 void main() {
   runApp(const MyApp());
 }
 
+/// Root widget of the app
+/// Defines the app theme (purple color scheme) and sets HomePage as the main screen
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'Shake to Get a Quote',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
         colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+        useMaterial3: true,
       ),
-      home: const MyHomePage(title: 'Flutter Demo Home Page'),
+      home: const HomePage(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+/// HomePage widget - The main screen of the app
+/// Stateful widget because it needs to change state when quotes are updated
+class HomePage extends StatefulWidget {
+  const HomePage({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<HomePage> createState() => _HomePageState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+/// State class for HomePage
+/// Manages the app's state, animations, and shake detection
+/// TickerProviderStateMixin is needed for smooth animations
+class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+  /// EventChannel to receive shake events from Android native code
+  static const platform = EventChannel('com.example/shake_events');
 
-  void _incrementCounter() {
-    setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
-    });
+  /// List of motivational quotes to display
+  /// Each quote has an emoji at the end for visual appeal
+  final List<String> quotes = [
+    "Don't hesitate — failure is easier than regret. 💪",
+    "Every small step brings you closer to your goal. 🚶",
+    "Success is not an accident; it's the result of preparation and persistence. 🎯",
+    "Learn something new today, even if it's small. 📚",
+    "Obstacles are what reveal our true strength. 🏔️",
+    "Start where you are, use what you have, do what you can. ✨",
+    "Focus creates greatness. 🔥",
+  ];
+
+  /// Stores the currently displayed quote
+  late String currentQuote;
+
+  /// Tracks the last quote shown to avoid duplicate consecutive quotes
+  late String lastQuote;
+
+  /// Controls the fade animation of the quote (fade in/out)
+  late AnimationController fadeController;
+
+  /// The actual fade animation that goes from 0 to 1 (invisible to visible)
+  late Animation<double> fadeAnimation;
+
+  /// Stream subscription to listen for shake events from Android
+  StreamSubscription? shakeSubscription;
+
+  /// initState is called when the widget is first created
+  /// Used to initialize variables and setup listeners
+  @override
+  void initState() {
+    super.initState();
+
+    /// Set the first quote to display
+    currentQuote = quotes[0];
+
+    /// Track the last quote to avoid showing same quote twice in a row
+    lastQuote = currentQuote;
+
+    /// Setup the animation controller that controls the fade effect
+    /// 800 milliseconds = 0.8 seconds for fade animation duration
+    fadeController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    /// Create the fade animation: starts at 0 (invisible) and goes to 1 (visible)
+    /// Tween defines the value range, CurvedAnimation makes it smooth
+    fadeAnimation = Tween<double>(
+      begin: 0.0,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: fadeController, curve: Curves.easeIn));
+
+    /// Start the fade animation immediately when the app loads
+    fadeController.forward();
+
+    /// Setup listener to receive shake events from Android
+    _setupShakeListener();
   }
 
+  /// Setup listener to receive shake events from Android native code
+  /// When phone is shaken, Android sends an event through the EventChannel
+  /// This function listens for those events and triggers _showNewQuote()
+  void _setupShakeListener() {
+    /// receiveBroadcastStream() listens for continuous events from Android
+    shakeSubscription = platform.receiveBroadcastStream().listen(
+      /// When an event is received (phone is shaken), call _showNewQuote()
+      (dynamic event) {
+        _showNewQuote();
+      },
+
+      /// If there's an error in communication, show error to user
+      onError: (dynamic error) {
+        debugPrint('Shake Detection Error: $error');
+
+        /// Show error message only if widget is still mounted (not disposed)
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Shake detection error. Check permissions.'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
+          );
+        }
+      },
+    );
+  }
+
+  /// Display a new random quote when phone is shaken
+  /// Also plays the fade animation to show the new quote smoothly
+  /// Avoids showing the same quote twice in a row
+  void _showNewQuote() {
+    /// setState() tells Flutter to update the UI
+    /// Get a random quote and keep trying if it's the same as the last one
+    setState(() {
+      do {
+        currentQuote = (quotes..shuffle()).first;
+      } while (currentQuote == lastQuote && quotes.length > 1);
+
+      /// Remember this quote so we don't show it again next time
+      lastQuote = currentQuote;
+    });
+
+    /// Reset the animation to the beginning (opacity = 0, invisible)
+    fadeController.reset();
+
+    /// Play the animation forward (fade in from 0 to 1)
+    fadeController.forward();
+  }
+
+  /// dispose() is called when the widget is destroyed
+  /// Clean up resources to prevent memory leaks
+  @override
+  void dispose() {
+    /// Stop and clean up the animation controller
+    fadeController.dispose();
+
+    /// Stop listening to shake events from Android
+    shakeSubscription?.cancel();
+
+    /// Call parent dispose
+    super.dispose();
+  }
+
+  /// build() creates the UI (visual layout) of the app
+  /// This is called whenever setState() updates the UI
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
+    /// Scaffold is the main structure of the app (AppBar + body)
     return Scaffold(
+      /// AppBar - Top bar of the app with the title
       appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
+        title: const Text('Shake to Get a Quote'),
+        backgroundColor: Colors.deepPurple,
+        elevation: 0,
       ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
-        child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: <Widget>[
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+
+      /// body - Main content area of the app
+      body: Container(
+        color: Colors.grey[100],
+
+        /// Center - Centers the child widget in the middle of the screen
+        child: Center(
+          /// FadeTransition - Animates the opacity (fade in/out effect)
+          /// Uses fadeAnimation to control the animation
+          child: FadeTransition(
+            opacity: fadeAnimation,
+
+            /// Padding - Adds space around the quote text
+            child: Padding(
+              padding: const EdgeInsets.all(32.0),
+
+              /// Text - The actual quote that is displayed
+              child: Text(
+                currentQuote,
+                textAlign: TextAlign.center,
+
+                /// TextStyle - Styling for the quote (size, color, weight)
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.deepPurple,
+                ),
+              ),
             ),
-          ],
+          ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
-      ), // This trailing comma makes auto-formatting nicer for build methods.
     );
   }
 }
