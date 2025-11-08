@@ -22,35 +22,37 @@ class ShakeDetector(private val onShake: () -> Unit) : SensorEventListener {
 
     /// Called when accelerometer data changes
     /// Receives X, Y, Z acceleration values from the sensor
+    /// Called when phone movement is detected
+    /// Checks if movement is strong enough to count as a shake
     override fun onSensorChanged(event: SensorEvent) {
-        /// Only process accelerometer sensor data
+        /// Only look at accelerometer data
         if (event.sensor.type == Sensor.TYPE_ACCELEROMETER) {
-            // Get acceleration values on all 3 axes
+            /// Get movement in 3 directions (X, Y, Z)
             val x = event.values[0]
             val y = event.values[1]
             val z = event.values[2]
 
-            // Calculate the magnitude of acceleration using Pythagorean theorem
-            // This gives the total acceleration regardless of direction
+            /// Calculate total movement strength
             val acceleration = Math.sqrt((x * x + y * y + z * z).toDouble()).toFloat()
 
-            /// Check if acceleration exceeds the shake threshold
+            /// If movement is strong enough, it's a shake
             if (acceleration > SHAKE_THRESHOLD) {
                 val currentTime = System.currentTimeMillis()
 
-                /// Only trigger shake callback if enough time has passed since last shake
-                /// This prevents multiple events from a single shake motion
+                /// Only trigger if enough time passed since last shake
+                /// This prevents counting one shake as multiple shakes
                 if (currentTime - lastShakeTime > SHAKE_INTERVAL) {
                     lastShakeTime = currentTime
-                    onShake() // Execute the callback function
+                    onShake() // Notify that shake happened
                 }
             }
         }
     }
 
-    /// Called when sensor accuracy changes (usually not needed)
-    /// This is a required override but we don't need to do anything here
+    /// Handles sensor accuracy changes notification
+    /// Required implementation of SensorEventListener interface
+    /// No action required for shake detection use case
     override fun onAccuracyChanged(sensor: Sensor, accuracy: Int) {
-        // No action needed for this app
+        // Sensor accuracy changes do not affect shake detection logic
     }
 }

@@ -66,43 +66,42 @@ class MainActivity : FlutterActivity() {
             }
     }
 
-    /// startShakeDetection - Begins monitoring accelerometer for shake events
-    /// Creates ShakeDetector if not exists, then registers it with SensorManager
+    /// Start listening for phone shakes
     private fun startShakeDetection() {
         /// Create ShakeDetector only once
         if (shakeDetector == null) {
             shakeDetector = ShakeDetector {
-                /// When shake is detected, send timestamp to Flutter
+                /// Send shake event to Flutter app
                 eventSink?.success(System.currentTimeMillis())
             }
         }
 
-        /// Get the accelerometer sensor
+        /// Get the accelerometer sensor from the phone
         val accelerometer = sensorManager?.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)
 
-        /// Register the detector to receive accelerometer events
+        /// Register to listen for accelerometer changes
         accelerometer?.let {
             sensorManager?.registerListener(shakeDetector, it, SensorManager.SENSOR_DELAY_UI)
         }
     }
 
-    /// stopShakeDetection - Stops monitoring accelerometer
-    /// Unregisters the detector to save battery and resources
+    /// Stop listening for shakes (saves battery)
     private fun stopShakeDetection() {
+        /// Unregister the shake detector
         shakeDetector?.let {
             sensorManager?.unregisterListener(it)
         }
     }
 
-    /// onPause - Called when app goes to background
-    /// Stop monitoring to save battery
+    /// Called when app goes to background
+    /// Stop listening to save battery
     override fun onPause() {
         super.onPause()
         stopShakeDetection()
     }
 
-    /// onResume - Called when app comes back to foreground
-    /// Resume monitoring
+    /// Called when app comes back to foreground
+    /// Start listening again
     override fun onResume() {
         super.onResume()
         startShakeDetection()
